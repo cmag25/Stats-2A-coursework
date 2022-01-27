@@ -1,0 +1,344 @@
+---
+title: "Statistics 2A Coursework"
+author: "Conor Maguire"
+date: "19/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1
+### Question 1
+We want to show that $R_{1}$ is a consistent estimator of $cor(X,Y)=\frac{cov(X,Y)}{\sqrt{\sigma_{X}\sigma_{Y}}}$ (ie that it converges in probability to this)
+
+By theorem 2.6 of the lecture notes, it suffices to show that $\sqrt{S_{x}^2 S_{y}^2}$ converges in probability to $\sigma_{X}\sigma_{Y}$ and $S_{xy}$ conerges in probability to $cov(X,Y)$
+
+#### 1.
+By Proposition 2.2 of the lecture notes $T_{1}$ = $\frac{S_{X}^2}{n}$ converges in probably to $\sigma_{X}^2$, so by this ($E[X^2 Y^2]$ is finite) and theorem 2.6, $S_{X}^2$ converges in probability to $n\sigma_{X}^2$. A similar argument can be used for $S_{Y}^2$.
+So, by theorem 2.6, $\sqrt{S_{x}^2 S_{y}^2}$ converges in probability to $\sqrt{n^2\sigma_{X}^2\sigma_{Y}^2} = n\sigma_{X}\sigma_{Y}$
+
+#### 2.
+We have:
+\begin{align*}\\
+S_{xy} = \sum_{i=1}^{n} (X_{i}-\overline{X})(Y_i-\overline{Y}) \\
+= \sum_{i=1}^{n} (X_{i}Y_{i} - \overline{X}\overline{Y}) \\ 
+= \sum_{i=1}^{n} (X_{i}Y_{i} -E[X]E[Y])$ \\
+= \sum_{i=1}^{n} (X_{i} -E[X])(Y_{i}-E[Y]) = ncov(X,Y)
+\end{align*}
+So $R_{1}$ converges in probability to $\frac{cov(X,Y)}{\sqrt{\sigma_{X}\sigma_{Y}}}$ and so is a consistent estimator of $\rho$ as required.
+
+For $R_{2}$ we use our existing arguments and theorem 2.6 along with out assumption that $\sigma_{X}^2 = \sigma_{Y}^2$ to find that it converges in probability to $\frac{2ncov(X,Y)}{2n{\sigma_{X}^2}}$ = $cor(X,Y)$ = $\rho$.
+
+Since $R_{3}$ is just the average of $R_{1}$ and $R_{2}$, both of which are consistent (when $\sigma_{X}^2 = \sigma_{Y}^2$) it is also a consistent estimator by theorem 2.6.
+
+
+### Question 2
+
+```{r, echo=FALSE}
+rbivnorm = function(n = 1, mu = rep(0,2), var = rep(1,2), rho = 0){
+
+  ## test the inputs are expected
+  if (!all(length(mu)==2, length(var)==2)){
+    stop("mean or variance vector is not length 2")
+  }
+  if (!all(length(n)==1, length(rho)==1)){
+    stop("n or rho not length 1")
+  }
+  if( rho > 1 | rho < -1 ){
+    stop('rho is not between -1 and 1')
+  }
+  if (any(var < 0)){
+    stop("one or both of your variances are not positive numbers")
+  }
+  
+  ## build the variance-covariance matrix
+  Sigma = matrix(c(var[1], prod(sqrt(var))*rho,
+                        prod(sqrt(var))*rho, var[2]), 2)
+  
+  ## ingredients for sqrt(Sigma)
+  eS <- eigen(Sigma, symmetric = TRUE)
+  ev <- eS$values
+  
+  ## matrix of 2n standard normal rvs
+  Z <- matrix(rnorm(2 * n), n)
+  
+  ### X = mu + sqrt(Sigma)' Z
+  X <- mu + eS$vectors %*% diag(sqrt(pmax(ev, 0)), 2) %*% t(Z)
+  
+  if (n == 1) 
+    drop(X)
+  else t(X)
+}
+
+```
+We write a function to calculate the estimators given n pairs of a bi-variate normal distribution.
+We first use a for-loop to calcuate the sample quantities, then we use these to obtain the three estimators.
+```{r}
+estimateCalc=function(data_matrix){
+  xVals=data_matrix[,1] #first column of the matrix is x values
+  yVals=data_matrix[,2] #second column is y values
+  xMean=mean(xVals)
+  yMean=mean(yVals)
+  sx2=0 #set up sample quantities
+  sy2=0
+  sxy=0
+  n=length(data_matrix[,1]) #set number of repeats to n, the number of rows
+  for (i in 1:n){
+    #calculate the sample quantities:
+    sx2=sx2+(data_matrix[i,1]-xMean)^2 
+    sy2=sy2+(data_matrix[i,2]-yMean)^2
+    sxy=sxy+((data_matrix[i,1]-xMean)*(data_matrix[i,2]-yMean))
+  }
+  #calculate estimators
+  R1=sxy/(sqrt(sx2*sy2))
+  R2=(2*sxy)/(sx2+sy2)
+  R3=(R1+R2)/2
+  estimators=c(R1,R2,R3) #puts all the estimators into a vector
+  return(estimators)
+}
+```
+This function produces the following output when the matrix used is the example in the coursework:
+```{r, echo=FALSE}
+data_matrix = matrix(c(-2.9, -2, -1.8, -0.88, 2.6,
+-0.13, -2.6, 0.41, 0.47, 1.4), ncol = 2)
+estimateCalc(data_matrix)
+```
+
+### Question 3
+We want to find the mean squared error of our estimators. The MSE of an estimator can be calculated in the following way:
+\begin{align*}\\
+MSE(\hat{\theta},\theta) &= Var(\hat{\theta}) + Bias(\hat{\theta},\theta)^2
+\end{align*}
+We perform a simulation:
+```{r, echo =FALSE}
+calcMse=function(x){
+  repeats=1000
+  est_vec=estimateCalc(sim_matrix)
+  est_values=matrix(data = NA, nrow=repeats, ncol = 3)
+  for (j in 1:repeats){
+    sim_matrix=rbivnorm(100, c(0,0), c(1,1), 0.2)
+    est_vec=estimateCalc(sim_matrix[1:x,])
+    for (i in 1:3){
+      est_values[j,i]=est_vec[i]
+      
+    }
+  }
+  mse_R1=var(est_values[,1])+(mean(est_values[,1])-0.2)^2
+  mse_R2=var(est_values[,2])+(mean(est_values[,2])-0.2)^2
+  mse_R3=var(est_values[,3])+(mean(est_values[,3])-0.2)^2
+  mse_vec=c(mse_R1, mse_R2, mse_R3)
+  return(mse_R1)
+
+
+}
+
+```
+
+```{r}
+sim_mse=function(n, mu, var, rho){
+  nsim=1000 #numbver of simulations, must stay constant for each n
+  est_array=matrix(nrow = nsim, ncol = 3) # create an array to store estimator values
+  for (i in 1:nsim){
+    sim_data=rbivnorm(n = n, mu = mu, var = var, rho = rho) #creates a random matrix of pairs from the bi-variate normal dist.
+    est_array[i,]=estimateCalc(sim_data) #add the values of the estimators to out array
+  }
+  #calculate MSE for each estimator using our formula:
+  mse_R1=var(est_array[,1])+(mean(est_array[,1])-rho)^2 
+  mse_R2=var(est_array[,2])+(mean(est_array[,2])-rho)^2
+  mse_R3=var(est_array[,3])+(mean(est_array[,3])-rho)^2
+  return(c(mse_R1, mse_R2, mse_R3))
+}
+```
+Let's do a comparison for different values of n:
+When n=10 the simulation produces the following MSEs:
+```{r, echo = FALSE}
+sim_mse(10, c(0,0), c(1,1), 0.2)
+```
+However when n=100 we instead get:
+```{r, echo = FALSE}
+sim_mse(100, c(0,0), c(1,1), 0.2)
+```
+These values are much lower than when n equaled 10.
+Plotting the results for each estimator gives us the following graph:
+```{r, echo = FALSE}
+xvals=(10:100)
+plot_vals=matrix(nrow=91, ncol = 3)
+for (i in 1:91){
+  plot_vals[i,]=sim_mse((i+9), c(0,0), c(1,1), 0.2)
+}
+plot(xvals, plot_vals[,1], xlab = "Sample size (n)", ylab = "MSE of the estimator", type ="l", col="red", main = "The effect of the sample size on the MSE of R1, R2, R3 ")
+lines(xvals, plot_vals[,2], col = "blue")
+lines(xvals, plot_vals[,3], col = "green")
+legend("topright", legend=c("R1", "R2", "R3"), col=c("red", "blue", "green"), lty=1)
+```
+
+From the plot we can conclude that, although each estimator tends towards 0 as n grows, R2 has a lower MSE for smaller values of n so is the estimator of choice followed by R3 then finally R1. R2 (as well as R1 and R3) is also consistent as Var(X) = Var(Y) in this case.
+
+### Question 4
+We repeat the simulation, changing the variances to (1, a) for $a \in {0.2,0.5,1}$ starting with a = 0.2:
+```{r, echo = FALSE}
+xvals=seq(from = 0, to = 0.9, length.out = 50)
+plot_vals=matrix(nrow =50, ncol = 3)
+for (i in 1:50){
+  plot_vals[i,]=sim_mse(n =20, mu = c(0,0), var = c(1,0.2), rho = xvals[i])
+} 
+plot(xvals, plot_vals[,1], xlab = "Cor(X,Y) (rho)", ylab = "MSE of the estimator", type ="l", col="red", main = "The effect of changing the correlation between X and Y on the MSE of
+     the estimators R1, R2, R3 when Var(X)=1, Var(Y) = 0.2")
+lines(xvals, plot_vals[,2], col = "blue")
+lines(xvals, plot_vals[,3], col = "green")
+legend("topright", legend=c("R1", "R2", "R3"), col=c("red", "blue", "green"), lty=1)
+
+```
+
+We see on this plot that the lines intersect at roughly $\rho = 0.45$ so for $\rho < 0.45$ R2 is the best choice of estimator, but R1 has a smaller MSE when $\rho > 0.45$ is the the best choice in those cases. Also since the variances aren't equal, R2 isn't necessarily a consistent estimator, however R1 always is so may be a better choice. 
+We repeat for a = 0.5:
+
+```{r, echo = FALSE}
+xvals=seq(from = 0, to = 0.9, length.out = 50)
+plot_vals=matrix(nrow =50, ncol = 3)
+for (i in 1:50){
+  plot_vals[i,]=sim_mse(n =20, mu = c(0,0), var = c(1,0.5), rho = xvals[i])
+} 
+plot(xvals, plot_vals[,1], xlab = "Cor(X,Y) (rho)", ylab = "MSE of the estimator", type ="l", col="red", main = "The effect of changing the correlation between X and Y on the MSE of
+     the estimators R1, R2, R3 when Var(X)=1, Var(Y) = 0.5")
+lines(xvals, plot_vals[,2], col = "blue")
+lines(xvals, plot_vals[,3], col = "green")
+legend("topright", legend=c("R1", "R2", "R3"), col=c("red", "blue", "green"), lty=1)
+
+```
+
+Here we notice that the lines intersect at around $\rho = 0.55$, with R2 being the best estimator (having the lowest MSE) before then, and R1  having the lowest MSE afterwards. However the variances still aren't equal so R2 is not necessarily consistent.
+Lastly for a = 1:
+```{r, echo = FALSE}
+xvals=seq(from = 0, to = 0.9, length.out = 50)
+plot_vals=matrix(nrow =50, ncol = 3)
+for (i in 1:50){
+  plot_vals[i,]=sim_mse(n =20, mu = c(0,0), var = c(1,1), rho = xvals[i])
+} 
+plot(xvals, plot_vals[,1], xlab = "Cor(X,Y) (rho)", ylab = "MSE of the estimator", type ="l", col="red", main = "The effect of changing the correlation between X and Y on the MSE of
+     the estimators R1, R2, R3 when Var(X)=1, Var(Y) = 1")
+lines(xvals, plot_vals[,2], col = "blue")
+lines(xvals, plot_vals[,3], col = "green")
+legend("topright", legend=c("R1", "R2", "R3"), col=c("red", "blue", "green"), lty=1)
+
+```
+
+Here R2 is our best choice of estimator for $\rho$ until around $\rho = 0.5$, after which the estimators have roughly the same MSE.
+In conclusion, R2 is the best estimator for $\rho$ up to a certain number dependent on Var(Y) after which R1 is the better choice, unless Var(Y) = Var(X) in which case all estimators are roughly equally as good after this point. If the coordinate of the intersection is not known then R3 can be used as it is the average of the two so will never have the greatest MSE.
+
+## Part 2
+
+### Question 5
+We construct a 95% confidence interval for $\rho$:
+
+We use the definition of convergence in law along with the central limit theorem to turn our given equation into:
+$\frac{\sqrt{n}(R_{1}-\rho)}{1-\rho^2} \rightarrow N(0,1)$ (in law)
+
+We can apply Slutsky's theorem to replace $\rho$ on the denominator with R1 since it is a consistent estimator of $\rho$, then we can rearrange to get the following confidence interval (a= 0.05):
+
+$(R_{1}-1.96\frac{1-R_{1}^2}{\sqrt{n}},R_{1}+1.96\frac{1-R_{1}^2}{\sqrt{n}})$
+
+We will perform a simulation to check the coverage of this confidence interval:
+```{r}
+ciSim=function(nsim, n, mu, var, rho){
+  ciVals=matrix(0, nrow=nsim, ncol=3) #cols 1 and 2 for CI values, col 3 for coverage checking
+  for (i in 1:nsim){
+    sim_data=rbivnorm(n = n, mu = mu, var = var, rho = rho)
+    est_values=estimateCalc(sim_data) #calculate estimators
+    R1=est_values[1]
+    #Calculate confidence interval
+    ciVals[i,1] = R1-1.96*((1-R1^2)/sqrt(n))
+    ciVals[i,2] = R1+1.96*((1-R1^2)/sqrt(n))
+    if ((ciVals[i,1]<0) && (ciVals[i,2]>0)){ #check if rho(=0) is in the confidence interval
+      ciVals[i,3]=1 #if rho is in the CI then we put a 1 in column three, otherwise we leave it as zero 
+    }
+  }
+coverage=mean(ciVals[,3]) #calculating the mean of the third row gives us the coverage
+return(coverage)
+}
+``` 
+If we run this function with nsim = 1000, n = 250, mu = (0,2), var = (1,2), rho = 0 we get the following coverage:
+```{r, echo = FALSE}
+ciSim(1000,250,c(0,2),c(1,2),0)
+```
+This is close to 95% coverage as expected since a=0.05
+
+### Question 6
+
+Using the first statement and the same steps as before we can construct the following::
+$(arctanh(R_{1})-\frac{1.96}{\sqrt{n-2}} < arctanh(\rho) < arctanh(R_{1})+\frac{1.96}{\sqrt{n-2}} )$
+So our confidence interval is:
+
+$(tanh(arctanh(R_{1})-\frac{1.96}{\sqrt{n-2}})), tanh(arctanh(R_{1})+\frac{1.96}{\sqrt{n-2}})))$
+
+The second statement involves the t-distribution so we can form the following CI:
+
+$(R_{1}-t_{n,0.975} \sqrt{\frac{1-R_{1}^2}{n-1}}, R_{1}+t_{n,0.975} \sqrt{\frac{1-R_{1}^2}{n-1}}$
+
+Note that when $\sigma_{X}^2 = \sigma_{Y}^2$, $\sqrt{\frac{S_{x}^2}{S_{y}^2}} = \frac{Var(X)}{Var(Y)} = 1$ 
+
+### Question 7
+
+We modify our function from question 6 and perform a simulation to calculate the relative merit of each CI:
+
+```{r}
+ciCompare=function(nsim, n, mu, var, rho){
+  #CI in question 5, we use the existing function
+  coverage1=ciSim(nsim, n, mu, var, rho)
+  #first CI in question 6, from previously used function
+  ciVals=matrix(0, nrow=nsim, ncol=3) #reset data matrix
+  for (i in 1:nsim){
+    sim_data=rbivnorm(n = n, mu = mu, var = var, rho = rho)
+    est_values=estimateCalc(sim_data) #calculate estimators
+    R1=est_values[1]
+    #Calculate confidence interval
+    ciVals[i,1] = tanh(atanh(R1)-1.96/(sqrt(n-2)))
+    ciVals[i,2] = tanh(atanh(R1)+1.96/(sqrt(n-2)))
+    if ((ciVals[i,1]<0) && (ciVals[i,2]>0)){ #check if rho is in the confidence interval
+      ciVals[i,3]=1 #if rho is in the CI then we put a 1 in column three, otherwise we leave it as zero 
+      }
+    }
+  coverage2=mean(ciVals[,3]) #calculate coverage
+  #second CI in question 6
+  ciVals=matrix(0, nrow=nsim, ncol=3) #reset data matrix
+  for (i in 1:nsim){
+    sim_data=rbivnorm(n = n, mu = mu, var = var, rho = rho)
+    est_values=estimateCalc(sim_data) #calculate estimators
+    R1=est_values[1]
+    #Calculate confidence interval
+    ciVals[i,1] = R1 - qt(p = 0.975, df = n)*(sqrt(1-R1^2))/sqrt(n-1)
+    ciVals[i,2] = R1 + qt(p = 0.975, df = n)*(sqrt(1-R1^2))/sqrt(n-1)
+    if ((ciVals[i,1]<0) && (ciVals[i,2]>0)){ #check if rho is in the confidence interval
+      ciVals[i,3]=1 #if rho is in the CI then we put a 1 in column three, otherwise we leave it as zero 
+      }
+    }
+  coverage3=mean(ciVals[,3])
+  return(c(coverage1,coverage2,coverage3)) #calculate coverage
+}
+```
+
+Now we will carry out some simulations.
+First we shall try the same values we used in question 5 but with n = 20 instead:
+```{r, echo = FALSE}
+ciCompare(1000,20,c(0,2),c(1,2),0)
+```
+(The third value is invalid here since the variances are not the same (1,2))
+We can see that the second confidence interval has the best coverage in this case.
+
+Now we try var=(3,3) (all other values the same):
+```{r, echo = FALSE}
+ciCompare(1000,20,c(0,2),c(1,2),0)
+```
+We can see that the third confidence interval has the best coverage and is valid since the variances are the same.
+
+Overall, the first confidence interval has the worst coverage for smaller samples so should not be used when n is small. The third has the best coverage, but is only valid when Var(X) = Var(Y). The second CI should be used when n is small the the variances are not equal.  
+
+
+
+
+
+
+
+
